@@ -1,19 +1,18 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using UnityEngine;
-using Debug = UnityEngine.Debug;
 
 public sealed class NullReferenceCheckingTestRunner : MonoBehaviour
 {
-    [Min(1)][SerializeField] private int updatesToRun = 100000;
-    [Min(1)][SerializeField] private int checksPerUpdate = 100000;
-    [Min(0)][SerializeField] private float startupDelayInSeconds = 5;
+    [Min(1)][SerializeField] private int updatesToRun;
+    [Min(1)][SerializeField] private int checksPerUpdate;
+    [Min(0)][SerializeField] private float startupDelayInSeconds;
     
     [Header("Tests To Run")]
-    [SerializeField] private bool measureEqualsEquals = true;
-    [SerializeField] private bool measureIs = true;
-    [SerializeField] private bool measureReferenceEquals = true;
-    [SerializeField] private bool measureQuestionMark = true;
+    [SerializeField] private bool measureEqualsEquals;
+    [SerializeField] private bool measureIs;
+    [SerializeField] private bool measureReferenceEquals;
+    [SerializeField] private bool measureQuestionMark;
     
     [Header("Game Object References")]
     [SerializeField] private Canvas canvas;
@@ -30,6 +29,12 @@ public sealed class NullReferenceCheckingTestRunner : MonoBehaviour
     
     void Start()
     {
+        EnqueueTestsToDo();
+        EnqueueTestResultsReferenceContainers();
+    }
+
+    private void EnqueueTestsToDo()
+    {
         if (measureEqualsEquals)
             _testsToDo.Enqueue(new EqualsEqualsNullReferenceCheckingTest(updatesToRun, gameObject));
         
@@ -41,7 +46,10 @@ public sealed class NullReferenceCheckingTestRunner : MonoBehaviour
         
         if (measureQuestionMark)
             _testsToDo.Enqueue(new QuestionMarkNullReferenceCheckingTest(updatesToRun, gameObject));
-        
+    }
+
+    private void EnqueueTestResultsReferenceContainers()
+    {
         for (var i = 0; i < _testsToDo.Count; i++)
         {
             var testResultsReferenceContainer = Instantiate(testResultPrefab, canvas.transform).GetComponent<TestResultsReferenceContainer>();
@@ -55,25 +63,23 @@ public sealed class NullReferenceCheckingTestRunner : MonoBehaviour
             return;
 
         if (_activeTest?.finished == true)
-        {
-            _stopwatch.Stop();
-            _activeTestResultsReferenceContainer.TimeDisplay.text = $"{_stopwatch.ElapsedMilliseconds} ms";
-            _activeTest = null;
-        }
+            EndTest();
         
-        if (_activeTest is null)
+        if (_activeTest is null && !TryStartNextTest())
         {
-            if (!TryStartNextTest())
-            {
-                _finished = true;
-                return;
-            }
+            _finished = true;
+            return;
         }
         
         _activeTest.Check(checksPerUpdate);
-        _activeTestResultsReferenceContainer.CounterDisplay.text = _activeTest.timesChecked.ToString();
-        var barAnchorMaxY = _activeTest.timesChecked / (float)updatesToRun;
-        _activeTestResultsReferenceContainer.Bar.anchorMax = new Vector2(1, barAnchorMaxY);
+        UpdateActiveTestResults();
+    }
+
+    private void EndTest()
+    {
+        _stopwatch.Stop();
+        _activeTestResultsReferenceContainer.TimeDisplay.text = $"{_stopwatch.ElapsedMilliseconds} ms";
+        _activeTest = null;
     }
 
     private bool TryStartNextTest()
@@ -86,80 +92,14 @@ public sealed class NullReferenceCheckingTestRunner : MonoBehaviour
             _stopwatch.Restart();
             return true;
         }
-        else return false;
-    }
-}
-
-public abstract class NullReferenceCheckingTest
-{
-    private int timesToCheck;
-    
-    public int timesChecked { get; private set; }
-    public bool finished => timesChecked >= timesToCheck;
-    
-    protected GameObject gameObjectToCheckAgainst;
-    
-    public NullReferenceCheckingTest(int timesToCheck, GameObject gameObjectToCheckAgainst)
-    {
-        this.timesToCheck = timesToCheck;
-        this.gameObjectToCheckAgainst = gameObjectToCheckAgainst;
-    }
-    
-    public void Check(int numberOfChecks)
-    {
-        if (timesChecked + numberOfChecks > timesToCheck)
-            numberOfChecks = timesToCheck - timesChecked;
         
-        for (var i = 0; i < numberOfChecks; i++)
-            if (PerformNullReferenceCheck()) {}
-        
-        timesChecked += numberOfChecks;
+        return false;
     }
 
-    public abstract string Name { get; }
-    protected abstract bool PerformNullReferenceCheck();
-}
-
-public class EqualsEqualsNullReferenceCheckingTest : NullReferenceCheckingTest
-{
-    public EqualsEqualsNullReferenceCheckingTest(int timesToCheck, GameObject gameObjectToCheckAgainst) : base(timesToCheck, gameObjectToCheckAgainst) {}
-
-    public override string Name => "==";
-    protected override bool PerformNullReferenceCheck()
+    private void UpdateActiveTestResults()
     {
-        return gameObjectToCheckAgainst == null;
-    }
-}
-
-public class IsNullReferenceCheckingTest : NullReferenceCheckingTest
-{
-    public IsNullReferenceCheckingTest(int timesToCheck, GameObject gameObjectToCheckAgainst) : base(timesToCheck, gameObjectToCheckAgainst) {}
-
-    public override string Name => "is";
-    protected override bool PerformNullReferenceCheck()
-    {
-        return gameObjectToCheckAgainst is null;
-    }
-}
-
-public class ReferenceEqualsNullReferenceCheckingTest : NullReferenceCheckingTest
-{
-    public ReferenceEqualsNullReferenceCheckingTest(int timesToCheck, GameObject gameObjectToCheckAgainst) : base(timesToCheck, gameObjectToCheckAgainst) {}
-
-    public override string Name => "ReferenceEquals";
-    protected override bool PerformNullReferenceCheck()
-    {
-        return ReferenceEquals(gameObjectToCheckAgainst, null);
-    }
-}
-
-public class QuestionMarkNullReferenceCheckingTest : NullReferenceCheckingTest
-{
-    public QuestionMarkNullReferenceCheckingTest(int timesToCheck, GameObject gameObjectToCheckAgainst) : base(timesToCheck, gameObjectToCheckAgainst) {}
-
-    public override string Name => "?";
-    protected override bool PerformNullReferenceCheck()
-    {
-        return gameObjectToCheckAgainst ? true : false;
+        _activeTestResultsReferenceContainer.CounterDisplay.text = _activeTest.timesChecked.ToString();
+        var barAnchorMaxY = _activeTest.timesChecked / (float)updatesToRun;
+        _activeTestResultsReferenceContainer.Bar.anchorMax = new Vector2(1, barAnchorMaxY);
     }
 }
